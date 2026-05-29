@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nobilis · Curvas de Rendimiento Uruguay</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+    :root {
+      --nb-blue:  #2AABE2;
+      --nb-navy:  #1C3D5A;
+      --nb-teal:  #005375;
+      --nb-grey:  #6B8BA4;
+      --nb-light: #edf6fb;
+      --nb-mid:   #b8ddf0;
+
+      /* curve palette */
+      --c-usd:  #2AABE2;
+      --c-ui:   #005375;
+      --c-nota: #00897B;
+      --c-uyu:  #E65100;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #f0f6fa;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 16px 48px;
+    }
+
+    /* ── toolbar ──────────────────────────────── */
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity .15s, transform .1s;
+      text-decoration: none;
+    }
+    .btn:hover  { opacity: .85; }
+    .btn:active { transform: scale(.97); }
+    .btn-buscar { background: var(--nb-blue); color: #fff; }
+    .btn-print  { background: var(--nb-navy); color: #fff; }
+    .btn-link   {
+      background: #fff;
+      color: var(--nb-navy);
+      border: 1.5px solid var(--nb-mid);
+    }
+    #fileInput { display: none; }
+
+    /* ── messages ─────────────────────────────── */
+    .msg { font-size: 12px; margin-bottom: 12px; text-align: center; min-height: 14px; }
+    .msg.error { color: #c0392b; }
+    .msg.ok    { color: #1a9e75; }
+
+    /* ── main card ────────────────────────────── */
+    .card {
+      background: #fff;
+      border: 1px solid #daeaf5;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(42,171,226,.09);
+      width: 100%;
+      max-width: 1400px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 3px solid var(--nb-blue);
+      background: #fff;
+    }
+    .logo-wrap img { height: 70px; width: auto; display: block; }
+    .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+    .header-title { font-size: 14px; font-weight: 700; color: var(--nb-navy); }
+    .header-sub   { font-size: 10px; color: var(--nb-grey); }
+    .header-date  { font-size: 10px; color: var(--nb-blue); font-weight: 600; margin-top: 1px; }
+
+    /* ── empty state ──────────────────────────── */
+    .empty-state {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--nb-grey);
+    }
+    .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: .45; }
+    .empty-text { font-size: 14px; }
+    .empty-hint { font-size: 11px; margin-top: 6px; opacity: .7; }
+
+    /* ── chart grid ───────────────────────────── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    .curve-card {
+      padding: 20px 22px 16px;
+      border-right: 1px solid var(--nb-light);
+      border-bottom: 1px solid var(--nb-light);
+      min-width: 0;
+    }
+    .data-table-wrap { overflow-x: auto; }
+    .curve-card:nth-child(even)  { border-right: none; }
+    .curve-card:nth-child(3),
+    .curve-card:nth-child(4)     { border-bottom: none; }
+
+    .curve-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .curve-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .curve-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--nb-navy);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .curve-count {
+      font-size: 10px;
+      color: var(--nb-grey);
+      margin-left: auto;
+    }
+
+    .chart-wrap { position: relative; height: 210px; }
+
+    /* data table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    .data-table th {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--nb-grey);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--nb-mid);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .data-table th.right { text-align: right; }
+    .data-table td {
+      font-size: 11px;
+      color: var(--nb-navy);
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--nb-light);
+      white-space: nowrap;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table td.right  { text-align: right; }
+    .data-table td.yield  { text-align: right; font-weight: 600; }
+    .data-table td.mid    { text-align: right; font-weight: 700; color: var(--nb-blue); }
+
+    /* ── footer ───────────────────────────────── */
+    .card-footer {
+      background: var(--nb-light);
+      border-top: 1px solid var(--nb-mid);
+      padding: 8px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer-left, .footer-right { font-size: 10px; color: var(--nb-grey); }
+
+    /* ── PRINT ────────────────────────────────── */
+    /* ── Print-page header (logo + título, solo visible al imprimir) ── */
+    .print-page-header {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 8px;
+      border-bottom: 3px solid var(--nb-blue);
+      margin-bottom: 10px;
+    }
+    .print-page-header img  { height: 36px; width: auto; display: block; }
+    .print-page-header .ph-title { font-size: 12px; font-weight: 700; color: var(--nb-navy); }
+    .print-page-header .ph-sub   { font-size: 9px;  color: var(--nb-grey); margin-top: 1px; }
+    .print-pair-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    .print-page { margin-bottom: 28px; }
+
+    @media print {
+      @page { size: A4 landscape; margin: 1.1cm 1.4cm; }
+      body   { background: #fff; padding: 0; }
+      .no-print, .toolbar, .msg, .card-header, .card-footer { display: none !important; }
+      .card  { box-shadow: none; border: none; border-radius: 0; max-width: 100%; }
+
+      /* Cada print-page = una carilla */
+      .print-page { break-after: page; margin-bottom: 0; }
+      .print-page:last-child { break-after: auto; }
+      .print-page-header { display: flex !important; }
+
+      .curve-card  { break-inside: avoid; border-right: 0.5px solid #e2eef6; border-bottom: none; }
+      .curve-card:last-child { border-right: none; }
+      .chart-wrap  { height: 195px; }
+
+      /* Tabla más compacta en landscape */
+      .data-table th, .data-table td { padding: 3px 6px; font-size: 9px; }
+      .td-tasa  { font-size: 13px; }
+    }
+
+    @media (max-width: 600px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .curve-card { border-right: none !important; }
+      .curve-card:nth-child(3) { border-bottom: 1px solid var(--nb-light) !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar no-print">
+  <button class="btn btn-buscar" onclick="document.getElementById('fileInput').click()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+    Cargar Grid Bloomberg
+  </button>
+  <button class="btn btn-save" id="btnSave" onclick="guardarCopia()" style="display: inline-flex;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>
+    </svg>
+    Guardar copia
+  </button>
+  <input type="file" id="fileInput" accept=".xlsx,.xls">
+</div>
+
+<div class="msg no-print " id="msgBox"></div>
+
+<!-- Main card -->
+<div class="card">
+  <div class="card-header">
+    <div class="logo-wrap">
+      <img src="data:image/png;base64,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" alt="Nobilis">
+    </div>
+    <div class="header-right">
+      <span class="header-title">Curvas de Rendimiento · Uruguay</span>
+      <span class="header-date" id="headerDate">Datos al 29/05/2026</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="content"><div class="print-page">
+      <div class="print-page-header">
+        <img src="data:image/png;base64,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" alt="Nobilis">
+        <div>
+          <div class="ph-title">Curvas de Rendimiento · Uruguay</div>
+          <div class="ph-sub">Datos al 29/05/2026 · Fuente: Bloomberg</div>
+        </div>
+      </div><div class="print-pair-grid"><div class="curve-card"><div class="curve-title">
+    <div class="curve-dot" style="background:#2AABE2"></div>
+    <span class="curve-label">GLOBALES USD</span>
+    <span class="curve-count">10 bonos</span>
+  </div><div class="chart-wrap"><canvas id="chart-usd" width="654" height="210" style="display: block; box-sizing: border-box; height: 210px; width: 654px;"></canvas></div><table class="data-table">
+      <thead>
+        <tr>
+          <th>Bono</th>
+          <th class="right">Vto.</th>
+          <th class="right">ISIN</th>
+          <th class="right">Bid Px</th>
+          <th class="right">Bid YTM</th>
+          <th class="right">Ask Px</th>
+          <th class="right">Ask YTM</th>
+          <th class="right">Mid YTM</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>URUGUA 4.375 27</td>
+            <td class="right">27/10/2027</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BB71</td>
+            <td class="right">99.650</td>
+            <td class="right">4.77%</td>
+            <td class="right">100.650</td>
+            <td class="right">3.63%</td>
+            <td class="mid">4.20%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 4.375 31</td>
+            <td class="right">23/01/2031</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BK78</td>
+            <td class="right">100.050</td>
+            <td class="right">4.36%</td>
+            <td class="right">101.050</td>
+            <td class="right">4.05%</td>
+            <td class="mid">4.21%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 7.875 33</td>
+            <td class="right">15/01/2033</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BA96</td>
+            <td class="right">117.100</td>
+            <td class="right">4.83%</td>
+            <td class="right">118.100</td>
+            <td class="right">4.67%</td>
+            <td class="mid">4.75%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 5.75 34</td>
+            <td class="right">28/10/2034</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BE11</td>
+            <td class="right">104.500</td>
+            <td class="right">5.01%</td>
+            <td class="right">105.500</td>
+            <td class="right">4.85%</td>
+            <td class="mid">4.93%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 7.625 36</td>
+            <td class="right">21/03/2036</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942AS16</td>
+            <td class="right">117.850</td>
+            <td class="right">5.08%</td>
+            <td class="right">118.850</td>
+            <td class="right">4.95%</td>
+            <td class="mid">5.02%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 5.442 37</td>
+            <td class="right">14/02/2037</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BH42</td>
+            <td class="right">102.000</td>
+            <td class="right">5.17%</td>
+            <td class="right">103.000</td>
+            <td class="right">5.04%</td>
+            <td class="mid">5.11%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 4.125 45</td>
+            <td class="right">20/11/2045</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942AY83</td>
+            <td class="right">85.600</td>
+            <td class="right">5.36%</td>
+            <td class="right">86.600</td>
+            <td class="right">5.27%</td>
+            <td class="mid">5.32%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 5.1 50</td>
+            <td class="right">18/06/2050</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BA98</td>
+            <td class="right">91.900</td>
+            <td class="right">5.74%</td>
+            <td class="right">92.900</td>
+            <td class="right">5.66%</td>
+            <td class="mid">5.70%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 4.975 55</td>
+            <td class="right">20/04/2055</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BD38</td>
+            <td class="right">88.900</td>
+            <td class="right">5.78%</td>
+            <td class="right">89.900</td>
+            <td class="right">5.70%</td>
+            <td class="mid">5.74%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 5.25 60</td>
+            <td class="right">10/09/2060</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BG68</td>
+            <td class="right">91.250</td>
+            <td class="right">5.85%</td>
+            <td class="right">92.250</td>
+            <td class="right">5.78%</td>
+            <td class="mid">5.81%</td>
+          </tr>
+        
+      </tbody>
+    </table></div><div class="curve-card"><div class="curve-title">
+    <div class="curve-dot" style="background:#005375"></div>
+    <span class="curve-label">GLOBALES UI</span>
+    <span class="curve-count">6 bonos</span>
+  </div><div class="chart-wrap"><canvas id="chart-ui" width="655" height="210" style="display: block; box-sizing: border-box; height: 210px; width: 655px;"></canvas></div><table class="data-table">
+      <thead>
+        <tr>
+          <th>Bono</th>
+          <th class="right">Vto.</th>
+          <th class="right">ISIN</th>
+          <th class="right">Bid Px</th>
+          <th class="right">Bid YTM</th>
+          <th class="right">Ask Px</th>
+          <th class="right">Ask YTM</th>
+          <th class="right">Mid YTM</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>URUGUA 4.25 27</td>
+            <td class="right">05/04/2027</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942AU61</td>
+            <td class="right">101.660</td>
+            <td class="right">2.25%</td>
+            <td class="right">102.040</td>
+            <td class="right">1.80%</td>
+            <td class="mid">2.02%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 4.375 28</td>
+            <td class="right">15/12/2028</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BD36</td>
+            <td class="right">103.180</td>
+            <td class="right">2.25%</td>
+            <td class="right">103.880</td>
+            <td class="right">1.80%</td>
+            <td class="mid">2.02%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 4 30</td>
+            <td class="right">10/07/2030</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">USP80557AD64</td>
+            <td class="right">104.750</td>
+            <td class="right">2.40%</td>
+            <td class="right">105.670</td>
+            <td class="right">2.10%</td>
+            <td class="mid">2.25%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 3.7 37</td>
+            <td class="right">26/06/2037</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942AV45</td>
+            <td class="right">109.220</td>
+            <td class="right">2.65%</td>
+            <td class="right">111.090</td>
+            <td class="right">2.45%</td>
+            <td class="mid">2.55%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 3.875 40</td>
+            <td class="right">02/07/2040</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BL51</td>
+            <td class="right">112.280</td>
+            <td class="right">2.75%</td>
+            <td class="right">115.260</td>
+            <td class="right">2.50%</td>
+            <td class="mid">2.63%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 3.4 45</td>
+            <td class="right">16/05/2045</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BP65</td>
+            <td class="right">108.420</td>
+            <td class="right">2.80%</td>
+            <td class="right">111.420</td>
+            <td class="right">2.60%</td>
+            <td class="mid">2.70%</td>
+          </tr>
+        
+      </tbody>
+    </table></div></div></div><div class="print-page">
+      <div class="print-page-header">
+        <img src="data:image/png;base64,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" alt="Nobilis">
+        <div>
+          <div class="ph-title">Curvas de Rendimiento · Uruguay</div>
+          <div class="ph-sub">Datos al 29/05/2026 · Fuente: Bloomberg</div>
+        </div>
+      </div><div class="print-pair-grid"><div class="curve-card"><div class="curve-title">
+    <div class="curve-dot" style="background:#00897B"></div>
+    <span class="curve-label">NOTAS UI</span>
+    <span class="curve-count">6 bonos</span>
+  </div><div class="chart-wrap"><canvas id="chart-nota" width="654" height="210" style="display: block; box-sizing: border-box; height: 210px; width: 654px;"></canvas></div><table class="data-table">
+      <thead>
+        <tr>
+          <th>Bono</th>
+          <th class="right">Vto.</th>
+          <th class="right">ISIN</th>
+          <th class="right">Bid Px</th>
+          <th class="right">Bid YTM</th>
+          <th class="right">Ask Px</th>
+          <th class="right">Ask YTM</th>
+          <th class="right">Mid YTM</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>UNT 1.125 27</td>
+            <td class="right">19/01/2027</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00030UI1</td>
+            <td class="right">99.320</td>
+            <td class="right">2.20%</td>
+            <td class="right">99.570</td>
+            <td class="right">1.80%</td>
+            <td class="mid">2.00%</td>
+          </tr>
+        
+          <tr>
+            <td>UNT 3.25 29</td>
+            <td class="right">18/01/2029</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00031UI9</td>
+            <td class="right">102.410</td>
+            <td class="right">2.30%</td>
+            <td class="right">103.440</td>
+            <td class="right">1.90%</td>
+            <td class="mid">2.10%</td>
+          </tr>
+        
+          <tr>
+            <td>UNT 3 30</td>
+            <td class="right">22/06/2030</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00033UI5</td>
+            <td class="right">102.310</td>
+            <td class="right">2.40%</td>
+            <td class="right">103.880</td>
+            <td class="right">2.00%</td>
+            <td class="mid">2.20%</td>
+          </tr>
+        
+          <tr>
+            <td>UNT 2.9 30</td>
+            <td class="right">24/07/2030</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00025UI1</td>
+            <td class="right">101.960</td>
+            <td class="right">2.40%</td>
+            <td class="right">103.570</td>
+            <td class="right">2.00%</td>
+            <td class="mid">2.20%</td>
+          </tr>
+        
+          <tr>
+            <td>UNT 2.5 34</td>
+            <td class="right">24/08/2034</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00029UI3</td>
+            <td class="right">98.690</td>
+            <td class="right">2.70%</td>
+            <td class="right">100.000</td>
+            <td class="right">2.50%</td>
+            <td class="mid">2.60%</td>
+          </tr>
+        
+          <tr>
+            <td>UNT 3.125 36</td>
+            <td class="right">28/02/2036</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">UYNA00032UI7</td>
+            <td class="right">103.290</td>
+            <td class="right">2.70%</td>
+            <td class="right">104.880</td>
+            <td class="right">2.50%</td>
+            <td class="mid">2.60%</td>
+          </tr>
+        
+      </tbody>
+    </table></div><div class="curve-card"><div class="curve-title">
+    <div class="curve-dot" style="background:#E65100"></div>
+    <span class="curve-label">GLOBALES UYU</span>
+    <span class="curve-count">4 bonos</span>
+  </div><div class="chart-wrap"><canvas id="chart-uyu" width="655" height="210" style="display: block; box-sizing: border-box; height: 210px; width: 655px;"></canvas></div><table class="data-table">
+      <thead>
+        <tr>
+          <th>Bono</th>
+          <th class="right">Vto.</th>
+          <th class="right">ISIN</th>
+          <th class="right">Bid Px</th>
+          <th class="right">Bid YTM</th>
+          <th class="right">Ask Px</th>
+          <th class="right">Ask YTM</th>
+          <th class="right">Mid YTM</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>URUGUA 8.5 28</td>
+            <td class="right">15/03/2028</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">USP80557BV53</td>
+            <td class="right">102.550</td>
+            <td class="right">6.95%</td>
+            <td class="right">103.140</td>
+            <td class="right">6.60%</td>
+            <td class="mid">6.78%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 8.25 31</td>
+            <td class="right">21/05/2031</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US917288BM35</td>
+            <td class="right">104.530</td>
+            <td class="right">7.15%</td>
+            <td class="right">105.380</td>
+            <td class="right">6.95%</td>
+            <td class="mid">7.05%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 9.75 33</td>
+            <td class="right">20/07/2033</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BF85</td>
+            <td class="right">113.940</td>
+            <td class="right">7.15%</td>
+            <td class="right">115.120</td>
+            <td class="right">6.95%</td>
+            <td class="mid">7.05%</td>
+          </tr>
+        
+          <tr>
+            <td>URUGUA 8 35</td>
+            <td class="right">29/10/2035</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">US760942BJ08</td>
+            <td class="right">104.960</td>
+            <td class="right">7.25%</td>
+            <td class="right">105.990</td>
+            <td class="right">7.10%</td>
+            <td class="mid">7.17%</td>
+          </tr>
+        
+      </tbody>
+    </table></div></div></div></div>
+
+  <div class="card-footer">
+    <span class="footer-left">Fuente: Bloomberg</span>
+    <span class="footer-right" id="footerDate">Generado: 29/05/2026</span>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────
+const LOGO = 'data:image/png;base64,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';
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  CONFIGURACIÓN CENTRAL — EDITAR AQUÍ PARA CAMBIAR CURVAS        ║
+// ╚══════════════════════════════════════════════════════════════════╝
+const CONFIG = {
+
+  // ── Curvas a mostrar ─────────────────────────────────────────────
+  // Para AGREGAR una curva: copiar un bloque { }, ajustar key/label/color/keywords
+  // Para QUITAR una curva:  comentar o eliminar su bloque
+  // Para CAMBIAR el nombre: editar label
+  // Para CAMBIAR el color:  editar color (cualquier valor CSS)
+  // keywords: palabras clave que identifican la sección en el grid Bloomberg
+  curves: [
+    {
+      key:      'usd',
+      label:    'GLOBALES USD',
+      color:    '#2AABE2',
+      keywords: ['global usd', 'usd'],
+    },
+    {
+      key:      'ui',
+      label:    'GLOBALES UI',
+      color:    '#005375',
+      keywords: ['global ui', 'global uis'],
+    },
+    {
+      key:      'nota',
+      label:    'NOTAS UI',
+      color:    '#00897B',
+      keywords: ['domestic ui', 'domestic uis'],
+    },
+    {
+      key:      'uyu',
+      label:    'GLOBALES UYU',
+      color:    '#E65100',
+      keywords: ['uyu', 'nominal', 'bills nominal'],
+    },
+    // ── Ejemplo: agregar curva de Letras del Tesoro (descomentar para activar)
+    // {
+    //   key:      'letras',
+    //   label:    'LETRAS DEL TESORO',
+    //   color:    '#7B1FA2',
+    //   keywords: ['letras', 'treasury'],
+    // },
+  ],
+
+  // ── Reglas de reclasificación ─────────────────────────────────────
+  // Bonds detectados en una sección pero que pertenecen a otra categoría.
+  // Para CAMBIAR el umbral de cupón UYU: editar cpnThreshold
+  // Para AGREGAR otra regla: copiar el bloque { } y ajustar fromKey/toKey/condition
+  reclassify: [
+    {
+      // Bonos en "Global UIs" con cupón >= 8 son nominales en UYU
+      fromKey:      'ui',
+      toKey:        'uyu',
+      cpnThreshold: 8,          // ← cambiar este número para ajustar el umbral
+      condition:    (bond) => !isNaN(bond.cpn) && bond.cpn >= 8,
+    },
+    // ── Ejemplo: reclasificar un bono específico por nombre (descomentar para activar)
+    // {
+    //   fromKey:   'usd',
+    //   toKey:     'otro',
+    //   condition: (bond) => bond.name.includes('URUGUA 7.875'),
+    // },
+  ],
+
+  // ── Bonos a excluir ───────────────────────────────────────────────
+  // Lista de nombres (o fragmentos) de bonos que NO deben aparecer en ninguna curva.
+  // Ejemplo: ['UNT 1.575 26', 'UTB 0 25']
+  // Para EXCLUIR un bono: agregar su nombre exacto (o parte del mismo) a la lista
+  exclude: [
+    // 'NOMBRE DEL BONO A EXCLUIR',
+  ],
+};
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  FIN DE CONFIGURACIÓN                                           ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+// Alias para compatibilidad con el resto del código
+const CATEGORIES = CONFIG.curves;
+
+// ── DATOS EMBEBIDOS ──────────────────────────────────────
+/* NOBILIS_DATA_START */
+// Generado el 29/05/2026
+const EMBEDDED_SECTIONS = {"ui":[{"name":"URUGUA 4.25 27","cpn":4.25,"matDate":"2027-04-05T03:00:00.000Z","yrs":0.849649510672548,"bPx":101.66,"aPx":102.04,"bYTC":2.25,"aYTC":1.8,"mid":2.025,"isin":"US760942AU61"},{"name":"URUGUA 4.375 28","cpn":4.375,"matDate":"2028-12-15T03:00:00.000Z","yrs":2.5471169986944506,"bPx":103.18,"aPx":103.88,"bYTC":2.25,"aYTC":1.8,"mid":2.025,"isin":"US917288BD36"},{"name":"URUGUA 4 30","cpn":4,"matDate":"2030-07-10T03:00:00.000Z","yrs":4.113167648934013,"bPx":104.75,"aPx":105.67,"bYTC":2.4,"aYTC":2.1,"mid":2.25,"isin":"USP80557AD64"},{"name":"URUGUA 3.7 37","cpn":3.7,"matDate":"2037-06-26T03:00:00.000Z","yrs":11.075522200579258,"bPx":109.22,"aPx":111.09,"bYTC":2.65,"aYTC":2.45,"mid":2.55,"isin":"US760942AV45"},{"name":"URUGUA 3.875 40","cpn":3.875,"matDate":"2040-07-02T03:00:00.000Z","yrs":14.092633767998834,"bPx":112.28,"aPx":115.26,"bYTC":2.75,"aYTC":2.5,"mid":2.625,"isin":"US917288BL51"},{"name":"URUGUA 3.4 45","cpn":3.4,"matDate":"2045-05-16T03:00:00.000Z","yrs":18.963270318306844,"bPx":108.42,"aPx":111.42,"bYTC":2.8,"aYTC":2.6,"mid":2.7,"isin":"US917288BP65"}],"uyu":[{"name":"URUGUA 8.5 28","cpn":8.5,"matDate":"2028-03-15T03:00:00.000Z","yrs":1.7942080322014349,"bPx":102.55,"aPx":103.14,"bYTC":6.95,"aYTC":6.6,"mid":6.775,"isin":"USP80557BV53"},{"name":"URUGUA 8.25 31","cpn":8.25,"matDate":"2031-05-21T03:00:00.000Z","yrs":4.975590646848937,"bPx":104.53,"aPx":105.38,"bYTC":7.15,"aYTC":6.95,"mid":7.050000000000001,"isin":"US917288BM35"},{"name":"URUGUA 9.75 33","cpn":9.75,"matDate":"2033-07-20T03:00:00.000Z","yrs":7.141230619470429,"bPx":113.94,"aPx":115.12,"bYTC":7.15,"aYTC":6.95,"mid":7.050000000000001,"isin":"US760942BF85"},{"name":"URUGUA 8 35","cpn":8,"matDate":"2035-10-29T03:00:00.000Z","yrs":9.416384623577205,"bPx":104.96,"aPx":105.99,"bYTC":7.25,"aYTC":7.1,"mid":7.175,"isin":"US760942BJ08"}],"usd":[{"name":"URUGUA 4.375 27","cpn":4.375,"matDate":"2027-10-27T03:00:00.000Z","yrs":1.4109089220029407,"bPx":99.65,"aPx":100.65,"bYTC":4.773,"aYTC":3.632,"mid":4.2025,"isin":"US760942BB71"},{"name":"URUGUA 4.375 31","cpn":4.375,"matDate":"2031-01-23T03:00:00.000Z","yrs":4.652524253967349,"bPx":100.05,"aPx":101.05,"bYTC":4.358,"aYTC":4.054,"mid":4.2059999999999995,"isin":"US917288BK78"},{"name":"URUGUA 7.875 33","cpn":7.875,"matDate":"2033-01-15T03:00:00.000Z","yrs":6.631990373063858,"bPx":117.1,"aPx":118.1,"bYTC":4.826,"aYTC":4.665,"mid":4.7455,"isin":"US917288BA96"},{"name":"URUGUA 5.75 34","cpn":5.75,"matDate":"2034-10-28T03:00:00.000Z","yrs":8.414331235486856,"bPx":104.5,"aPx":105.5,"bYTC":5.007,"aYTC":4.847,"mid":4.927,"isin":"US760942BE11"},{"name":"URUGUA 7.625 36","cpn":7.625,"matDate":"2036-03-21T03:00:00.000Z","yrs":9.810635136924228,"bPx":117.85,"aPx":118.85,"bYTC":5.08,"aYTC":4.952,"mid":5.016,"isin":"US760942AS16"},{"name":"URUGUA 5.442 37","cpn":5.442,"matDate":"2037-02-14T03:00:00.000Z","yrs":10.714125896677821,"bPx":102,"aPx":103,"bYTC":5.174,"aYTC":5.043,"mid":5.1085,"isin":"US760942BH42"},{"name":"URUGUA 4.125 45","cpn":4.125,"matDate":"2045-11-20T03:00:00.000Z","yrs":19.477986266287676,"bPx":85.6,"aPx":86.6,"bYTC":5.364,"aYTC":5.269,"mid":5.3165,"isin":"US760942AY83"},{"name":"URUGUA 5.1 50","cpn":5.1,"matDate":"2050-06-18T03:00:00.000Z","yrs":24.05293493158542,"bPx":91.9,"aPx":92.9,"bYTC":5.738,"aYTC":5.655,"mid":5.6965,"isin":"US760942BA98"},{"name":"URUGUA 4.975 55","cpn":4.975,"matDate":"2055-04-20T03:00:00.000Z","yrs":28.89071727244784,"bPx":88.9,"aPx":89.9,"bYTC":5.781,"aYTC":5.702,"mid":5.7415,"isin":"US760942BD38"},{"name":"URUGUA 5.25 60","cpn":5.25,"matDate":"2060-09-10T03:00:00.000Z","yrs":34.28428332309808,"bPx":91.25,"aPx":92.25,"bYTC":5.849,"aYTC":5.776,"mid":5.8125,"isin":"US760942BG68"}],"nota":[{"name":"UNT 1.125 27","cpn":1.125,"matDate":"2027-01-19T03:00:00.000Z","yrs":0.6415728508188202,"bPx":99.32,"aPx":99.57,"bYTC":2.2,"aYTC":1.8,"mid":2,"isin":"UYNA00030UI1"},{"name":"UNT 3.25 29","cpn":3.25,"matDate":"2029-01-18T03:00:00.000Z","yrs":2.6402039254252543,"bPx":102.41,"aPx":103.44,"bYTC":2.3,"aYTC":1.9,"mid":2.0999999999999996,"isin":"UYNA00031UI9"},{"name":"UNT 3 30","cpn":3,"matDate":"2030-06-22T03:00:00.000Z","yrs":4.0638863347339464,"bPx":102.31,"aPx":103.88,"bYTC":2.4,"aYTC":2,"mid":2.2,"isin":"UYNA00033UI5"},{"name":"UNT 2.9 30","cpn":2.9,"matDate":"2030-07-24T03:00:00.000Z","yrs":4.151497559922174,"bPx":101.96,"aPx":103.57,"bYTC":2.4,"aYTC":2,"mid":2.2,"isin":"UYNA00025UI1"},{"name":"UNT 2.5 34","cpn":2.5,"matDate":"2034-08-24T03:00:00.000Z","yrs":8.236370934323269,"bPx":98.69,"aPx":100,"bYTC":2.7,"aYTC":2.5,"mid":2.6,"isin":"UYNA00029UI3"},{"name":"UNT 3.125 36","cpn":3.125,"matDate":"2036-02-28T03:00:00.000Z","yrs":9.75040241960732,"bPx":103.29,"aPx":104.88,"bYTC":2.7,"aYTC":2.5,"mid":2.6,"isin":"UYNA00032UI7"}]};
+const EMBEDDED_DATE = '29/05/2026';
+/* NOBILIS_DATA_END */
+
+let charts = {};
+
+// Auto-cargar datos embebidos si existen
+window.addEventListener('DOMContentLoaded', () => {
+  if (EMBEDDED_SECTIONS) {
+    // Restaurar Date objects (JSON serializa fechas como strings)
+    Object.values(EMBEDDED_SECTIONS).forEach(arr =>
+      arr.forEach(b => { if (b.matDate && typeof b.matDate === 'string') b.matDate = new Date(b.matDate); })
+    );
+    window._lastSections = EMBEDDED_SECTIONS;
+    window._lastDate     = EMBEDDED_DATE;
+    renderAll(EMBEDDED_SECTIONS);
+    document.getElementById('headerDate').textContent = 'Datos al ' + EMBEDDED_DATE;
+    document.getElementById('footerDate').textContent = 'Generado: '  + EMBEDDED_DATE;
+    document.getElementById('btnSave').style.display  = 'inline-flex';
+    // Versión comercial: ocultar botón de carga y mensaje
+    document.querySelector('.toolbar').style.display = 'none';
+    document.getElementById('msgBox').style.display  = 'none';
+  }
+});
+
+// ── UTILS ────────────────────────────────────────────────
+// Convierte cualquier valor de celda a número (maneja N/A, #N/A, strings)
+function parseNum(val) {
+  if (val === null || val === undefined || val === '') return NaN;
+  if (typeof val === 'number') return val;
+  const s = val.toString().trim();
+  if (/^[#Nn]/.test(s) || s === '') return NaN;   // N/A, #N/A, etc.
+  return parseFloat(s.replace(',', '.'));
+}
+
+// Convierte cualquier valor de celda a Date
+// Soporta: Date object, Excel serial, DD/MM/YYYY, YYYY-MM-DD,
+//          DD-Mon-YY, DD-Mon-YYYY  (formato Bloomberg: 18-Jun-50, 27-Oct-27)
+function parseDateVal(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const s = val.toString().trim();
+
+  // DD-Mon-YY  o  DD-Mon-YYYY  (Bloomberg: "18-Jun-50", "05-Apr-27")
+  const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,
+                  jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  let m = s.match(/^(\d{1,2})[\-\/](\w{3})[\-\/](\d{2,4})$/);
+  if (m) {
+    const mon = MONTHS[m[2].toLowerCase()];
+    if (mon !== undefined) {
+      let yr = +m[3];
+      if (yr < 100) yr += 2000;   // 2-digit year → siempre 2000+
+      return new Date(yr, mon, +m[1]);
+    }
+  }
+
+  // DD/MM/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+
+  // YYYY-MM-DD
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+
+  // Fallback genérico
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function yearsTo(date) {
+  return (date - new Date()) / (365.25 * 86400000);
+}
+
+function fmtDate(date) {
+  if (!date) return '—';
+  return date.toLocaleDateString('es-UY', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+
+// Paleta para secciones no configuradas en CONFIG
+const _AUTO_PALETTE = ['#7B1FA2','#FF5722','#795548','#607D8B','#F57F17','#00695C','#AD1457'];
+let   _autoPaletteIdx = 0;
+const _dynamicCats    = {};
+
+function matchCategory(sectionName) {
+  const lower = sectionName.toLowerCase();
+  // Primero buscar en CONFIG.curves
+  const found = CONFIG.curves.find(c => c.keywords.some(k => lower.includes(k)));
+  if (found) return found;
+  // Si no está configurada, crear categoría dinámica automáticamente
+  const key = sectionName.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  if (!_dynamicCats[key]) {
+    _dynamicCats[key] = {
+      key,
+      label:    sectionName.replace(/^\*+\s*/,'').toUpperCase(),
+      color:    _AUTO_PALETTE[_autoPaletteIdx++ % _AUTO_PALETTE.length],
+      keywords: [lower],
+      dynamic:  true,
+    };
+  }
+  return _dynamicCats[key];
+}
+
+function setMsg(text, type) {
+  const el = document.getElementById('msgBox');
+  el.textContent = text;
+  el.className = 'msg no-print ' + (type || '');
+}
+
+// ── FILE PARSING ─────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+  e.target.value = '';
+});
+
+function processFile(file) {
+  setMsg('');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      // raw:false → todo como strings, consistente en cualquier entorno
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('worksheet')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+
+      // Sin header:1 → SheetJS usa la primera fila como clave (objeto por fila)
+      // Esto evita completamente los problemas de índice
+      const rows = XLSX.utils.sheet_to_json(ws, {raw:false, defval:'', blankrows:false});
+
+      if (!rows.length) { setMsg('Archivo vacío o sin datos', 'error'); return; }
+
+      // Detectar claves del objeto (primera fila se usa como header)
+      const sample = rows[0];
+      const keys   = Object.keys(sample);
+      const findK  = pats => keys.find(k => pats.some(p => new RegExp(p,'i').test(k.trim()))) || '';
+      const kSec  = findK(['security']);
+      const kCpn  = findK(['^cpn','coupon']);
+      const kMty  = findK(['^mt?y']);
+      const kBPx  = findK(['b.{0,2}px']);
+      const kAPx  = findK(['a.{0,2}px']);
+      const kBYTC = findK(['b.{0,3}yt']);
+      const kAYTC = findK(['a.{0,3}yt']);
+      const kISIN = findK(['^isin$']);
+      console.log('Columnas detectadas:', {kSec,kCpn,kMty,kBPx,kAPx,kBYTC,kAYTC,kISIN});
+
+      const sections = {};
+      let currentCat = null;
+
+      for (const row of rows) {
+        const security = (row[kSec] || '').toString().trim();
+        if (!security) continue;
+
+        // Encabezado de sección
+        if (security.startsWith('*')) {
+          const name = security.replace(/^\*+\s*/, '');
+          currentCat = matchCategory(name);
+          if (currentCat && !sections[currentCat.key]) sections[currentCat.key] = [];
+          continue;
+        }
+        if (!currentCat) continue;
+
+        const mtyStr  = (row[kMty]  || '').toString().trim();
+        const bYTCraw = (row[kBYTC] || '').toString().trim();
+        const aYTCraw = (row[kAYTC] || '').toString().trim();
+        const bPxRaw  = (row[kBPx]  || '').toString().trim();
+        const aPxRaw  = (row[kAPx]  || '').toString().trim();
+        const cpnRaw  = (row[kCpn]  || '').toString().trim();
+        const isin    = kISIN ? (row[kISIN] || '').toString().trim() : '';
+
+        // Saltar filas de sección sin datos reales
+        if (!mtyStr || mtyStr.startsWith('#')) continue;
+
+        const matDate = parseDateVal(mtyStr);
+        if (!matDate) { console.warn('Fecha inválida:', security, mtyStr); continue; }
+
+        const yrs = yearsTo(matDate);
+        if (yrs <= 0) continue;
+
+        const toNum = s => { const n = parseFloat(s.replace(/[^0-9.-]/g,'')); return isNaN(n) ? NaN : n; };
+        const cpn  = toNum(cpnRaw);
+        let   bYTC = toNum(bYTCraw);
+        let   aYTC = toNum(aYTCraw);
+        const bPx  = toNum(bPxRaw);
+        const aPx  = toNum(aPxRaw);
+
+        if (isNaN(bYTC) && isNaN(aYTC)) { console.warn('Sin yields:', security, bYTCraw, aYTCraw); continue; }
+        if (isNaN(bYTC)) bYTC = aYTC;
+        if (isNaN(aYTC)) aYTC = bYTC;
+        const mid = (bYTC + aYTC) / 2;
+
+        // Aplicar reglas de reclasificación de CONFIG
+        const bond = { name: security, cpn, matDate, yrs, bPx, aPx, bYTC, aYTC, mid };
+        let targetKey = currentCat.key;
+        for (const rule of CONFIG.reclassify) {
+          if (rule.fromKey === currentCat.key && rule.condition(bond)) {
+            targetKey = rule.toKey;
+            break;
+          }
+        }
+        // Aplicar exclusiones de CONFIG
+        if (CONFIG.exclude.some(ex => security.includes(ex))) continue;
+        if (!sections[targetKey]) sections[targetKey] = [];
+
+        bond.isin = isin;
+        sections[targetKey].push(bond);
+      }
+
+      Object.values(sections).forEach(arr => arr.sort((a,b) => a.yrs - b.yrs));
+
+      renderAll(sections);
+      const today = new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'numeric'});
+      document.getElementById('headerDate').textContent = 'Datos al ' + today;
+      document.getElementById('footerDate').textContent  = 'Generado: '  + today;
+      setMsg('');  // mensaje removido
+      // Guardar para embed y mostrar botón Guardar copia
+      window._lastSections = sections;
+      window._lastDate = today;
+      document.getElementById('btnSave').style.display = 'inline-flex';
+
+    } catch(err) {
+      console.error(err);
+      setMsg('Error: ' + err.message, 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── RENDERING ────────────────────────────────────────────
+// Logo base64 para el header de impresión (se lee del IMG ya embebido)
+function getLogoSrc() {
+  const img = document.querySelector('.logo-wrap img');
+  return img ? img.src : '';
+}
+
+function renderAll(sections) {
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  const contentEl = document.getElementById('content');
+  contentEl.innerHTML = '';
+
+  // Categorías activas (con datos), orden: CONFIG primero, luego dinámicas
+  const configKeys = new Set(CONFIG.curves.map(c => c.key));
+  const activeCats = [
+    ...CONFIG.curves.filter(c => (sections[c.key]||[]).length > 0),
+    ...Object.keys(sections)
+      .filter(k => !configKeys.has(k) && sections[k].length > 0)
+      .map(k => _dynamicCats[k]).filter(Boolean),
+  ];
+
+  if (activeCats.length === 0) {
+    contentEl.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📈</div>
+      <div class="empty-text">No se encontraron datos válidos en el archivo</div>
+    </div>`;
+    return;
+  }
+
+  const today = new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const logoSrc = getLogoSrc();
+
+  // Agrupar de a 2 cartas → cada grupo = una carilla al imprimir
+  for (let i = 0; i < activeCats.length; i += 2) {
+    const pair = activeCats.slice(i, i + 2);
+
+    const printPage = document.createElement('div');
+    printPage.className = 'print-page';
+
+    // Header con Nobilis (solo visible al imprimir)
+    printPage.innerHTML = `
+      <div class="print-page-header">
+        <img src="${logoSrc}" alt="Nobilis"/>
+        <div>
+          <div class="ph-title">Curvas de Rendimiento · Uruguay</div>
+          <div class="ph-sub">Datos al ${today} · Fuente: Bloomberg</div>
+        </div>
+      </div>`;
+
+    // Grid de 2 cartas
+    const pairGrid = document.createElement('div');
+    pairGrid.className = pair.length === 1
+      ? 'print-pair-grid'
+      : 'print-pair-grid';
+    if (pair.length === 1) pairGrid.style.gridTemplateColumns = '1fr';
+
+    pair.forEach((cat, idx) => {
+      const bonds = sections[cat.key] || [];
+      const card  = buildCard(cat, bonds, idx, pair.length);
+      pairGrid.appendChild(card);
+    });
+
+    printPage.appendChild(pairGrid);
+    contentEl.appendChild(printPage);
+  }
+
+  // Inicializar gráficos
+  requestAnimationFrame(() => {
+    activeCats.forEach(cat => {
+      const bonds = sections[cat.key] || [];
+      if (!bonds.length) return;
+      const ctx = document.getElementById('chart-' + cat.key);
+      if (ctx) charts[cat.key] = buildChart(ctx, cat, bonds);
+    });
+  });
+}
+
+function buildCard(cat, bonds, idx = 0, total = 4) {
+  const card = document.createElement('div');
+  card.className = 'curve-card';
+
+  // Title row
+  const titleDiv = document.createElement('div');
+  titleDiv.className = 'curve-title';
+  titleDiv.innerHTML = `
+    <div class="curve-dot" style="background:${cat.color}"></div>
+    <span class="curve-label">${cat.label}</span>
+    <span class="curve-count">${bonds.length} bono${bonds.length !== 1 ? 's' : ''}</span>
+  `;
+  card.appendChild(titleDiv);
+
+  // Chart canvas
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+  if (bonds.length === 0) {
+    wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9CBCC7;font-size:12px;">Sin datos</div>';
+  } else {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'chart-' + cat.key;
+    wrap.appendChild(canvas);
+  }
+  card.appendChild(wrap);
+
+  // Data table
+  if (bonds.length > 0) {
+    const tbl = document.createElement('table');
+    tbl.className = 'data-table';
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Bono</th>
+          <th class="right">Vto.</th>
+          <th class="right">ISIN</th>
+          <th class="right">Bid Px</th>
+          <th class="right">Bid YTM</th>
+          <th class="right">Ask Px</th>
+          <th class="right">Ask YTM</th>
+          <th class="right">Mid YTM</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${bonds.map(b => `
+          <tr>
+            <td>${b.name}</td>
+            <td class="right">${fmtDate(b.matDate)}</td>
+            <td class="right" style="font-size:9px;letter-spacing:.02em">${b.isin || '—'}</td>
+            <td class="right">${isNaN(b.bPx) ? '—' : b.bPx.toFixed(3)}</td>
+            <td class="right">${b.bYTC.toFixed(2)}%</td>
+            <td class="right">${isNaN(b.aPx) ? '—' : b.aPx.toFixed(3)}</td>
+            <td class="right">${b.aYTC.toFixed(2)}%</td>
+            <td class="mid">${b.mid.toFixed(2)}%</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
+    card.appendChild(tbl);
+  }
+
+  return card;
+}
+
+// ── OLS LOGARITHMIC FIT ─────────────────────────────────
+// Model: y = a + b·ln(x)
+function fitLogOLS(bonds, field) {
+  const n = bonds.length;
+  if (n < 2) return null;
+  const zi = bonds.map(b => Math.log(b.yrs));
+  const yi = bonds.map(b => b[field]);
+  const sumZ  = zi.reduce((s,z)=>s+z, 0);
+  const sumY  = yi.reduce((s,y)=>s+y, 0);
+  const sumZY = zi.reduce((s,z,i)=>s+z*yi[i], 0);
+  const sumZ2 = zi.reduce((s,z)=>s+z*z, 0);
+  const denom = n*sumZ2 - sumZ*sumZ;
+  if (Math.abs(denom) < 1e-12) return null;
+  const b = (n*sumZY - sumZ*sumY) / denom;
+  const a = (sumY - b*sumZ) / n;
+  return { a, b };
+}
+
+function genLogCurve(params, xMin, xMax, n = 150) {
+  if (!params) return [];
+  const { a, b } = params;
+  const pts = [];
+  const step = (xMax - xMin) / (n - 1);
+  for (let i = 0; i < n; i++) {
+    const x = xMin + i * step;
+    if (x <= 0) continue;
+    pts.push({ x, y: a + b * Math.log(x) });
+  }
+  return pts;
+}
+
+function buildChart(ctx, cat, bonds) {
+  const color = cat.color;
+  const hex2rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [r,g,bv] = hex2rgb(color);
+  const c = a => `rgba(${r},${g},${bv},${a})`;
+
+  const labels = bonds.map(b => b.name);
+  const n = bonds.length;
+
+  // Con 1 solo bono no hay curva OLS — mostrar nota en el gráfico
+  if (n === 1) {
+    const wrap = ctx.parentElement;
+    const note = document.createElement('div');
+    note.style.cssText = 'position:absolute;bottom:6px;right:8px;font-size:9px;color:#9CBCC7;font-style:italic;';
+    note.textContent = 'Curva requiere ≥ 2 datos';
+    wrap.style.position = 'relative';
+    wrap.appendChild(note);
+  }
+
+  // Rango X: empezar antes del bono más corto, terminar después del más largo
+  const allYrs = bonds.map(b => b.yrs);
+  const xMin   = Math.max(0.1, Math.min(...allYrs) * 0.6);
+  const xMax   = Math.max(...allYrs) * 1.08;
+
+  // Ajuste OLS
+  const midFit = fitLogOLS(bonds, 'mid');
+  const bidFit = fitLogOLS(bonds, 'bYTC');
+  const askFit = fitLogOLS(bonds, 'aYTC');
+
+  // Curvas suaves (muchos puntos)
+  const midCurve = genLogCurve(midFit, xMin, xMax);
+  const bidCurve = genLogCurve(bidFit, xMin, xMax);
+  const askCurve = genLogCurve(askFit, xMin, xMax);
+
+  // Puntos reales — SIN parsing:false, SIN type:scatter (evita bug de rango X)
+  // Se usan como line con showLine:false para que Chart.js los incluya correctamente
+  const midPts = bonds.map(b => ({ x: b.yrs, y: b.mid  }));
+  const bidPts = bonds.map(b => ({ x: b.yrs, y: b.bYTC }));
+  const askPts = bonds.map(b => ({ x: b.yrs, y: b.aYTC }));
+
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        // ── Área bid/ask (fondo) ──────────────────────
+        {
+          label: '_ask_curve',
+          data: askCurve,
+          borderColor: c(0.18),
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: '+1',
+          backgroundColor: c(0.07),
+          tension: 0,
+          order: 5,
+        },
+        {
+          label: '_bid_curve',
+          data: bidCurve,
+          borderColor: c(0.18),
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          order: 6,
+        },
+        // ── Curva mid ajustada ────────────────────────
+        {
+          label: '_mid_curve',
+          data: midCurve,
+          borderColor: color,
+          borderWidth: 2.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          order: 3,
+        },
+        // ── Puntos bid observados ─────────────────────
+        {
+          label: 'Bid',
+          data: bidPts,
+          borderColor: c(0.35),
+          backgroundColor: c(0.12),
+          borderWidth: 1.2,
+          pointRadius: 3,
+          pointHoverRadius: 4,
+          showLine: false,
+          order: 4,
+        },
+        // ── Puntos ask observados ─────────────────────
+        {
+          label: 'Ask',
+          data: askPts,
+          borderColor: c(0.35),
+          backgroundColor: c(0.12),
+          borderWidth: 1.2,
+          pointRadius: 3,
+          pointHoverRadius: 4,
+          showLine: false,
+          order: 4,
+        },
+        // ── Puntos mid observados (encima de todo) ────
+        {
+          label: 'Mid',
+          data: midPts,
+          borderColor: color,
+          backgroundColor: '#ffffff',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          showLine: false,
+          order: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff',
+          borderColor: '#daeaf5',
+          borderWidth: 1,
+          titleColor: '#1C3D5A',
+          bodyColor: '#6B8BA4',
+          titleFont: { family:"'DM Sans',sans-serif", size: 11, weight: '600' },
+          bodyFont:  { family:"'DM Sans',sans-serif", size: 11 },
+          padding: 10,
+          filter: item => item.dataset.label === 'Mid',
+          callbacks: {
+            title: items => items.length ? (labels[items[0].dataIndex] || '') : '',
+            label: ctx => {
+              const b = bonds[ctx.dataIndex];
+              if (!b) return '';
+              const px = v => isNaN(v) ? '—' : v.toFixed(3);
+              return [
+                ` Bid Px: ${px(b.bPx)}   Ask Px: ${px(b.aPx)}`,
+                ` Bid YTM: ${b.bYTC.toFixed(2)}%   Ask YTM: ${b.aYTC.toFixed(2)}%`,
+                ` Mid YTM: ${b.mid.toFixed(2)}%`,
+                ` Vto: ${fmtDate(b.matDate)}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: 0,
+          suggestedMax: xMax + 1,
+          title: {
+            display: true,
+            text: 'Años al vencimiento',
+            color: '#9CBCC7',
+            font: { size: 9, family: "'DM Sans',sans-serif" }
+          },
+          ticks: {
+            color: '#9CBCC7',
+            font: { size: 9 },
+            maxTicksLimit: 9,
+            callback: v => v.toFixed(0) + 'a'
+          },
+          grid:   { color: '#f0f6fa', lineWidth: 1 },
+          border: { color: '#e2eef6' }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Rendimiento (%)',
+            color: '#9CBCC7',
+            font: { size: 9, family: "'DM Sans',sans-serif" }
+          },
+          ticks: {
+            color: '#9CBCC7',
+            font: { size: 9 },
+            callback: v => v.toFixed(2) + '%'
+          },
+          grid:   { color: '#f0f6fa', lineWidth: 1 },
+          border: { color: '#e2eef6' }
+        }
+      }
+    }
+  });
+}
+
+
+// ── GUARDAR COPIA CON DATOS EMBEBIDOS ────────────────────
+async function guardarCopia() {
+  if (!window._lastSections) { alert('Primero cargá el grid Bloomberg'); return; }
+
+  const fecha    = window._lastDate || new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const dataStr  = JSON.stringify(window._lastSections);
+  let   html     = document.documentElement.outerHTML;
+
+  const inicio = '/* NOBILIS_DATA_START */';
+  const fin    = '/* NOBILIS_DATA_END */';
+  const iStart = html.indexOf(inicio);
+  const iEnd   = html.indexOf(fin) + fin.length;
+
+  if (iStart === -1) { alert('Error: marcador de datos no encontrado.'); return; }
+
+  html = html.substring(0, iStart) +
+    `/* NOBILIS_DATA_START */
+// Generado el ${fecha}
+const EMBEDDED_SECTIONS = ${dataStr};
+const EMBEDDED_DATE = '${fecha}';
+/* NOBILIS_DATA_END */` +
+    html.substring(iEnd);
+
+  if (!html.startsWith('<!DOCTYPE')) html = '<!DOCTYPE html>\n' + html;
+
+  const blob     = new Blob([html], {type: 'text/html;charset=utf-8'});
+  const fileName = 'NOBILIS - Curvas Uruguay.html';
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: 'Archivo HTML', accept: {'text/html': ['.html']} }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  // Fallback
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</body></html>
